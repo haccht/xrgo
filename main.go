@@ -257,6 +257,12 @@ func (wp *WorkerPool) Wait() {
 	wp.wg.Wait()
 }
 
+type Response struct {
+	Host    string   `json:"host"`
+	Command string   `json:"command"`
+	Result  []string `json:"result"`
+}
+
 func main() {
 	var opts struct {
 		Commands    []string `short:"e" long:"exec" description:"Commandline arguments"`
@@ -281,12 +287,9 @@ func main() {
 
 	mu := new(sync.Mutex)
 	wp := NewWorkPool(opts.Concurrency)
-	results := make(map[string]map[string][]string, len(addrs))
-
+	responses := []*Response{}
 	for i := range addrs {
 		addr := addrs[i]
-		results[addr] = make(map[string][]string, len(opts.Commands))
-
 		wp.Go(func() {
 			xr := NewXR(addr, TransportFromName(opts.Transport))
 			if opts.JsonFormat {
@@ -312,7 +315,11 @@ func main() {
 
 				if opts.JsonFormat {
 					mu.Lock()
-					results[addr][command] = lines
+					responses = append(responses, &Response{
+						Host:    addr,
+						Command: command,
+						Result:  lines,
+					})
 					mu.Unlock()
 				}
 
@@ -322,7 +329,7 @@ func main() {
 
 	wp.Wait()
 	if opts.JsonFormat {
-		b, err := json.MarshalIndent(results, "", "  ")
+		b, err := json.MarshalIndent(responses, "", "  ")
 		if err != nil {
 			log.Fatalf("Error: %+v", err)
 		}
